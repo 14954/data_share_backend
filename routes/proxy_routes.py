@@ -30,18 +30,6 @@ def _forward_headers():
     }
 
 
-def _forward_files():
-    files = []
-    for field_name, storage in request.files.items(multi=True):
-        files.append(
-            (
-                field_name,
-                (storage.filename, storage.stream, storage.content_type),
-            )
-        )
-    return files
-
-
 def _upstream_url(target_path: str) -> str:
     base_url = current_app.config["MARKET_SERVER_URL"].rstrip("/") + "/"
     api_prefix = current_app.config.get("MARKET_SERVER_API_PREFIX", "/api").strip("/")
@@ -52,13 +40,7 @@ def _upstream_url(target_path: str) -> str:
 @proxy_bp.route("/<path:target_path>", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 @proxy_bp.route("", defaults={"target_path": ""}, methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def proxy(target_path):
-    files = _forward_files()
     headers = _forward_headers()
-    if files:
-        for key in list(headers):
-            if key.lower() == "content-type":
-                headers.pop(key, None)
-    data = request.form if files else request.get_data()
 
     try:
         upstream = requests.request(
@@ -66,8 +48,7 @@ def proxy(target_path):
             url=_upstream_url(target_path),
             params=request.args,
             headers=headers,
-            data=data,
-            files=files or None,
+            data=request.get_data(),
             stream=True,
             timeout=(5, 300),
             allow_redirects=False,
@@ -80,6 +61,7 @@ def proxy(target_path):
         for key, value in upstream.headers.items()
         if key.lower() not in HOP_BY_HOP_HEADERS
     ]
+
     response = Response(
         upstream.iter_content(chunk_size=8192),
         status=upstream.status_code,
