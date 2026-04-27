@@ -29,9 +29,9 @@ def create_app():
         expose_headers=["Content-Disposition", "Content-Type"],
     )  # 配置跨域
 
-    # 注册本地中转站蓝图：前端仍访问 /api/*，请求会转发到远程 market_server。
+    # 注册本地中转站蓝图：前端仍访问 /remote/*，请求会转发到远程 market_server。
     from routes import proxy_bp
-    app.register_blueprint(proxy_bp, url_prefix="/api")
+    app.register_blueprint(proxy_bp, url_prefix="/remote")
 
     # 健康检查路由
     @app.route("/health", methods=["GET"])
@@ -56,5 +56,5 @@ def create_app():
 
 if __name__ == "__main__":
     app = create_app()
-    print(f"Proxying /api/* to {app.config['MARKET_SERVER_URL']}")
+    print(f"Proxying /remote/* to {app.config['MARKET_SERVER_URL']}")
     app.run(host=app.config["APP_HOST"], port=app.config["APP_PORT"], debug=True)

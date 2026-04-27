@@ -32,7 +32,7 @@ def _forward_headers():
 
 def _upstream_url(target_path: str) -> str:
     base_url = current_app.config["MARKET_SERVER_URL"].rstrip("/") + "/"
-    api_prefix = current_app.config.get("MARKET_SERVER_API_PREFIX", "/api").strip("/")
+    api_prefix = current_app.config.get("MARKET_SERVER_API_PREFIX", "/remote").strip("/")
     upstream_path = "/".join(part for part in [api_prefix, target_path.lstrip("/")] if part)
     return urljoin(base_url, upstream_path)
 
