@@ -30,7 +30,8 @@ def create_app():
     )  # 配置跨域
 
     # 注册本地中转站蓝图：前端仍访问 /remote/*，请求会转发到远程 market_server。
-    from routes import proxy_bp
+    from routes import local_bp, proxy_bp
+    app.register_blueprint(local_bp, url_prefix="/local")
     app.register_blueprint(proxy_bp, url_prefix="/remote")
 
     # 健康检查路由

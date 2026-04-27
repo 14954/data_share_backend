@@ -30,6 +30,18 @@ def _forward_headers():
     }
 
 
+def _forward_files():
+    files = []
+    for field_name, storage in request.files.items(multi=True):
+        files.append(
+            (
+                field_name,
+                (storage.filename, storage.stream, storage.content_type),
+            )
+        )
+    return files
+
+
 def _upstream_url(target_path: str) -> str:
     base_url = current_app.config["MARKET_SERVER_URL"].rstrip("/") + "/"
     api_prefix = current_app.config.get("MARKET_SERVER_API_PREFIX", "/remote").strip("/")
@@ -41,6 +53,13 @@ def _upstream_url(target_path: str) -> str:
 @proxy_bp.route("", defaults={"target_path": ""}, methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def proxy(target_path):
     headers = _forward_headers()
+    is_multipart = (request.mimetype or "").lower() == "multipart/form-data"
+    files = _forward_files() if is_multipart else []
+    if is_multipart:
+        for key in list(headers):
+            if key.lower() == "content-type":
+                headers.pop(key, None)
+    data = request.form if is_multipart else request.get_data()
 
     try:
         upstream = requests.request(
@@ -48,7 +67,8 @@ def proxy(target_path):
             url=_upstream_url(target_path),
             params=request.args,
             headers=headers,
-            data=request.get_data(),
+            data=data,
+            files=files or None,
             stream=True,
             timeout=(5, 300),
             allow_redirects=False,

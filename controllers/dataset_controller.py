@@ -42,7 +42,7 @@ def generate_provider_signed_download_url(
         abort(400, description="failed to generate signed url")
 
     return {
-        "signedUrl": signed_url,
+        "signed_url": signed_url,
         "expiresIn": expires_in,
         "objectKey": objectKey,
     }
