@@ -1,8 +1,12 @@
+import sqlite3
 from urllib.parse import urljoin
 
 import requests
 from apiflask import APIBlueprint
-from flask import Response, abort, current_app, request
+from flask import Response, abort, current_app, jsonify, request
+
+from controllers.private_key_controller import save_private_key
+from utils.crypto_utils import generate_rsa_key_pair
 
 
 proxy_bp = APIBlueprint("proxy", __name__)
@@ -49,10 +53,54 @@ def _upstream_url(target_path: str) -> str:
     return urljoin(base_url, upstream_path)
 
 
+def _register_with_key_pair(target_path: str, headers: dict):
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    public_key, private_key = generate_rsa_key_pair()
+    data["public_key"] = public_key
+    headers.pop("Content-Length", None)
+
+    try:
+        upstream = requests.post(
+            url=_upstream_url(target_path),
+            params=request.args,
+            headers=headers,
+            json=data,
+            timeout=(5, 30),
+            allow_redirects=False,
+        )
+    except requests.RequestException as exc:
+        abort(502, description=f"market_server unavailable: {exc}")
+
+    if upstream.status_code >= 400:
+        return Response(
+            upstream.content,
+            status=upstream.status_code,
+            headers=[
+                (key, value)
+                for key, value in upstream.headers.items()
+                if key.lower() not in HOP_BY_HOP_HEADERS
+            ],
+        )
+
+    try:
+        payload = upstream.json()
+    except ValueError:
+        payload = {"status": "success"}
+    try:
+        save_private_key(username, private_key)
+    except (OSError, sqlite3.Error, ValueError) as exc:
+        abort(500, description=f"failed to store private key: {exc}")
+    return jsonify(payload), upstream.status_code
+
+
 @proxy_bp.route("/<path:target_path>", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 @proxy_bp.route("", defaults={"target_path": ""}, methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 def proxy(target_path):
     headers = _forward_headers()
+    if request.method == "POST" and target_path.strip("/") == "auth/register":
+        return _register_with_key_pair(target_path, headers)
+
     is_multipart = (request.mimetype or "").lower() == "multipart/form-data"
     files = _forward_files() if is_multipart else []
     if is_multipart:

@@ -5,6 +5,8 @@ from apiflask import APIBlueprint
 from flask import abort, current_app, request
 
 from controllers import generate_provider_signed_download_url
+from controllers.private_key_controller import get_private_key
+from utils.crypto_utils import decrypt_signed_url_for_consumer, encrypt_signed_url_for_consumer
 
 
 local_bp = APIBlueprint("local", __name__)
@@ -32,6 +34,14 @@ def generate_url():
         expires_in=int(data.get("expires_in") or 3600),
         endpoint_url=data.get("endpoint_url") or data.get("endpoint"),
     )
+    consumer_public_key = data.get("consumerPublicKey") or data.get("consumer_public_key")
+    try:
+        encrypted_signed_url = encrypt_signed_url_for_consumer(
+            generated["signed_url"],
+            consumer_public_key,
+        )
+    except ValueError as exc:
+        abort(400, description=str(exc))
 
     headers = {}
     auth_header = request.headers.get("Authorization")
@@ -43,7 +53,8 @@ def generate_url():
             _market_url("/remote/shares/update"),
             json={
                 "shareId": share_id,
-                "signed_url": generated["signed_url"],
+                "signed_url": encrypted_signed_url,
+                "storageType": "s3",
             },
             headers=headers,
             timeout=(5, 30),
@@ -62,5 +73,33 @@ def generate_url():
     return {
         "status": "success",
         "shareId": share_id,
-        **generated,
+        "expiresIn": generated["expiresIn"],
+        "objectKey": generated["objectKey"],
+        "encrypted": True,
+    }
+
+
+@local_bp.post("/decrypt_url")
+def decrypt_url():
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    encrypted_url = data.get("encryptedUrl") or data.get("encrypted_url") or data.get("downloadUrl")
+    if not username:
+        abort(400, description="username required")
+    if not encrypted_url:
+        abort(400, description="encryptedUrl required")
+
+    try:
+        private_key = get_private_key(username)
+        download_url = decrypt_signed_url_for_consumer(encrypted_url, private_key)
+    except LookupError as exc:
+        abort(404, description=str(exc))
+    except ValueError as exc:
+        abort(400, description=str(exc))
+    except Exception:
+        abort(400, description="failed to decrypt signed url")
+
+    return {
+        "status": "success",
+        "downloadUrl": download_url,
     }

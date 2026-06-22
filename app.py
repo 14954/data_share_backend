@@ -24,7 +24,7 @@ def create_app():
 
     CORS(
         app,
-        origins=[Config.CORS_ORIGIN],
+        origins=Config.CORS_ORIGINS,
         supports_credentials=True,
         expose_headers=["Content-Disposition", "Content-Type"],
     )  # 配置跨域
